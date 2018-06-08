@@ -99,13 +99,29 @@ public class NativeFSLockFactory extends FSLockFactory {
    */
   public NativeFSLockFactory(File lockDir) {
     setLockDir(lockDir);
-  }
+  }  //需要锁定的dir
 
+
+  /*
+  lockprefix  可以使相同的lockdir下  有多个文件锁
+  es再使用的时候  lockName是固定的  lockprefix=null
+  实际上通过约定使 文件锁变成了目录锁  虽然文件锁定的是lockdir/lockName
+  但是lockName不变，这样调用的时候实际上lockdir就锁定了
+
+
+  lockName  lockdir
+  一个lockdir下可有多个lockname
+  若是lockname固定不变   一个lockdir  实际上对应一个lockname
+  也就是一个lockdir  对应一个锁   虽然这个锁  是文件lockdir/lockname  的文件锁
+
+   其他也想操作这个lockdir的代码 若是也使用这种方式来获取lockdir的锁，会获取失败，因为LOCK_HELD 记录了已被持有的文件锁
+   想获取成功只需要换个lockname
+   */
   @Override
   public synchronized Lock makeLock(String lockName) {
     if (lockPrefix != null)
       lockName = lockPrefix + "-" + lockName;
-    return new NativeFSLock(lockDir, lockName);
+    return new NativeFSLock(lockDir, lockName);  //new NativeFSLock对象
   }
 
   @Override
@@ -114,12 +130,18 @@ public class NativeFSLockFactory extends FSLockFactory {
   }
 }
 
+/*
+对lock 进行包装  加入了一个set
+ */
 class NativeFSLock extends Lock {
 
   private FileChannel channel;
   private FileLock lock;
   private File path;
   private File lockDir;
+  /*
+  注意这里的set是静态的，已经被持有的文件锁都会包含在这个set中
+   */
   private static final Set<String> LOCK_HELD = Collections.synchronizedSet(new HashSet<String>());
 
 
