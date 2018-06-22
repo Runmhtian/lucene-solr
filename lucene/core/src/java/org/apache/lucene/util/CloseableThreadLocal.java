@@ -52,7 +52,47 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * @lucene.internal
  */
+/*
+ThreadLocal是一个能更够实现线程内数据共享的类
 
+  在threadLocalMap中
+    static class Entry extends WeakReference<ThreadLocal<?>> {
+
+            Object value;
+
+                    Entry(ThreadLocal<?> k, Object v) {
+                    super(k);
+                    value = v;
+                    }
+                    }
+
+  弱引用机制实际上只是  对key使用，也就是ThreadLocal对象
+
+是回收ThreadLocal对象，而非整个Entry，所以线程变量中的值T对象还是在内存中存在的
+
+ThreadLocalMap会定期清理内部的无效Entry对象，触发的条件就是对TrheadLocal执行 set，get，remove()等操作时会触发，但是线程map中持有的是threadLocal的弱引用
+当发生gc时，如果一个ThreadLocal没有外部强引用引用他，此threadlocal势必会被回收（所有线程中持有的都是弱引用），ThreadLocalMap中就会出现key为null的Entry，就没有办法访问这些key为null的Entry的value，
+如果当前线程对象一直存在的话，这些key为null的Entry的value就会一直存在一条强引用链（Thread.threadLocals），虽然线程会清理内部无效的entry对象，但是只有在执行操作时才进行清除。
+所以很多情况下需要使用者手动调用ThreadLocal的remove函数，手动删除不再需要的ThreadLocal，防止内存泄露。所以JDK建议将ThreadLocal变量定义成private static的，
+这样的话ThreadLocal的生命周期就更长，由于一直存在ThreadLocal的强引用，所以ThreadLocal也就不会被回收，也就能保证任何时候都能根据ThreadLocal的弱引用访问到Entry的value值，然后remove它，防止内存泄露。
+
+并且remove只移除了当前线程对象map中的threadlocal为null的记录
+
+(当threadlocal 没有强引用的时候，意味着 threadlocal不再使用，而各个线程含有 此threadlocal为key，value的强引用，这样value不能被回收
+（可能需要被回收，除了此强引用外，没有别的强引用，当然也可能线程中其他地方正在使用value，持有value的强引用，这时候value是不需要被回收的），造成内存泄露)
+
+在使用线程池时要特别注意threadLocal的使用
+
+
+CloseableThreadLocal在内部维护了一个ThreadLocal，当执行CloseableThreadLocal.set(T)时，内部其实只是代理的把值赋给内部的ThreadLocal对象，
+即执行ThreadLocal.set(new WeakReference(T))。看到这里应该明白了，这里不是直接存储T，则是包装成弱引用对象，目的就是当内存不足时，jvm可以回收此对象。
+会引入一个新的问题，即当前线程还存活着的时候，线程中可能需要使用此弱引用对象，因为gc而回收了弱引用对象，这样造成线程执行的问题
+所以CloseableThreadLocal在内部还创建了一个WeakHashMap<Thread, T>，当线程只要存活时，则T就至少有一个强引用存在，所以不会被提前回收。
+但是又引入的第2个问题，对WeakHashMap的操作要做同步synchronized限制。
+
+（WeakHashMap 包含了对 Thread和T的强引用，因此两者都不会被回收，只有在执行get set 或者close方法时（执行get set并不是每次都执行，还有一个PURGE_MULTIPLIER来控制，
+为了避免每次执行都需要遍历WeakHashMap，提供效率？？？） 来判断线程是否存活，进行垃圾回收）
+ */
 public class CloseableThreadLocal<T> implements Closeable {
 
   private ThreadLocal<WeakReference<T>> t = new ThreadLocal<>();
