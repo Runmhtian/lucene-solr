@@ -99,7 +99,7 @@ public class CloseableThreadLocal<T> implements Closeable {
 
   // Use a WeakHashMap so that if a Thread exits and is
   // GC'able, its entry may be removed:
-  private Map<Thread,T> hardRefs = new WeakHashMap<>();
+  private Map<Thread,T> hardRefs = new WeakHashMap<>();  // key 是weak  也就是线程存活（key不会被gc），value一定存在
   
   // Increase this to decrease frequency of purging in get:
   private static int PURGE_MULTIPLIER = 20;
